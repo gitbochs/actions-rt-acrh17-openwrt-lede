@@ -135,9 +135,28 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P2_SH
     # ================= 插入开始 =================
     - name: Compile gn with Clang
+      id: compile_gn
       run: |
-        cd openwrt 
-        # 强制使用 Clang 预编译 gn，避开 GCC 12 的兼容性问题
+        cd openwrt
+        
+        # 1. 确保 host 工具目录存在
+        mkdir -p staging_dir/host/bin
+        
+        # 2. 将系统安装的 ninja 链接到 OpenWrt 预期的位置
+        # Ubuntu 上通常叫 ninja-build 或 ninja，这里做个判断自动链接
+        if [ -x "$(command -v ninja)" ]; then
+            ln -sf "$(command -v ninja)" staging_dir/host/bin/ninja
+        elif [ -x "$(command -v ninja-build)" ]; then
+            ln -sf "$(command -v ninja-build)" staging_dir/host/bin/ninja
+        else
+            echo "System ninja not found, installing..."
+            sudo apt-get update && sudo apt-get install -y ninja-build
+            ln -sf "$(command -v ninja-build)" staging_dir/host/bin/ninja
+        fi
+        
+        echo "Ninja version: $(staging_dir/host/bin/ninja --version)"
+
+        # 3. 开始编译 gn (使用 Clang)
         make package/feeds/helloworld/gn/host/compile HOSTCC="clang" HOSTCXX="clang++" V=s
     # ================= 插入结束 =================
     - name: SSH connection to Actions
