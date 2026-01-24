@@ -134,28 +134,29 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
     # ================= 插入开始 =================
-    - name: Compile gn with GCC 11
+    - name: Compile gn with Clang and Fix Ninja
       id: compile_gn
       run: |
         cd openwrt
         
-        # 1. 安装依赖：GCC 11 和 Ninja
-        # Ubuntu 22.04 默认可能是 GCC 12，我们需要安装并使用 GCC 11
+        # 1. 安装必要的工具 (Clang 和 Ninja)
         sudo apt-get update
-        sudo apt-get install -y ninja-build g++-11
+        sudo apt-get install -y ninja-build clang
         
-        # 2. 修复 ninja 路径 (解决 "ninja: No such file" 错误)
+        # 2. 手动创建 OpenWrt 的 host 工具目录
         mkdir -p staging_dir/host/bin
-        if [ -x "$(command -v ninja-build)" ]; then
-            ln -sf "$(command -v ninja-build)" staging_dir/host/bin/ninja
-        fi
         
-        echo "Ninja version: $(staging_dir/host/bin/ninja --version)"
-        echo "GCC version check: $(g++-11 --version | head -n1)"
-
-        # 3. 强制使用 GCC 11 编译 gn
-        # HOSTCC/HOSTCXX 变量强制指定旧版编译器，避开 GCC 12 的 C++20 严格检查
-        make package/feeds/helloworld/gn/host/compile HOSTCC="gcc-11" HOSTCXX="g++-11" V=s
+        # 3. 强制创建软链接 (直接指向 Ubuntu 的 ninja-build 位置)
+        # Ubuntu 22.04 下 ninja-build 安装在 /usr/bin/ninja-build
+        ln -sf /usr/bin/ninja-build staging_dir/host/bin/ninja
+        
+        # 4. 验证链接是否成功 (调试用)
+        ls -l staging_dir/host/bin/ninja
+        ./staging_dir/host/bin/ninja --version
+        
+        # 5. 使用 Clang 编译 gn
+        # Clang 对 C++20 的 ranges 支持通常比 GCC 更宽容，或者能正确避开此错误
+        make package/feeds/helloworld/gn/host/compile HOSTCC="clang" HOSTCXX="clang++" V=s
     # ================= 插入结束 =================
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
