@@ -133,7 +133,13 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
-
+# ================= 插入开始 =================
+    - name: Compile gn with Clang
+      run: |
+        cd openwrt
+        # 强制使用 Clang 预编译 gn，避开 GCC 12 的兼容性问题
+        make package/feeds/helloworld/gn/host/compile HOSTCC="clang" HOSTCXX="clang++" V=s
+    # ================= 插入结束 =================
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
