@@ -139,23 +139,32 @@ jobs:
       run: |
         cd openwrt
         
-        # 1. 安装必要的工具 (Clang 和 Ninja)
+        # 1. 安装必要的工具
         sudo apt-get update
         sudo apt-get install -y ninja-build clang
         
-        # 2. 手动创建 OpenWrt 的 host 工具目录
+        # 2. 动态查找系统 ninja 的真实路径
+        # Ubuntu 上通常是 /usr/bin/ninja，但也可能是 ninja-build
+        SYSTEM_NINJA=$(command -v ninja || command -v ninja-build)
+        
+        if [ -z "$SYSTEM_NINJA" ]; then
+            echo "Error: Ninja binary not found!"
+            exit 1
+        fi
+        echo "Found system ninja at: $SYSTEM_NINJA"
+        
+        # 3. 创建 OpenWrt 预期的 host 工具目录
         mkdir -p staging_dir/host/bin
         
-        # 3. 强制创建软链接 (直接指向 Ubuntu 的 ninja-build 位置)
-        # Ubuntu 22.04 下 ninja-build 安装在 /usr/bin/ninja-build
-        ln -sf /usr/bin/ninja-build staging_dir/host/bin/ninja
+        # 4. 创建正确的软链接
+        ln -sf "$SYSTEM_NINJA" staging_dir/host/bin/ninja
         
-        # 4. 验证链接是否成功 (调试用)
+        # 5. 验证链接有效性 (这一步不应该再报错了)
         ls -l staging_dir/host/bin/ninja
         ./staging_dir/host/bin/ninja --version
         
-        # 5. 使用 Clang 编译 gn
-        # Clang 对 C++20 的 ranges 支持通常比 GCC 更宽容，或者能正确避开此错误
+        # 6. 使用 Clang 编译 gn
+        # Clang 兼容性更好，能解决 C++20 ranges 报错
         make package/feeds/helloworld/gn/host/compile HOSTCC="clang" HOSTCXX="clang++" V=s
     # ================= 插入结束 =================
     - name: SSH connection to Actions
