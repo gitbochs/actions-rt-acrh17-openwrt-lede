@@ -133,10 +133,10 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
-# ================= 插入开始 =================
+    # ================= 插入开始 =================
     - name: Compile gn with Clang
       run: |
-        cd openwrt
+        cd openwrt 
         # 强制使用 Clang 预编译 gn，避开 GCC 12 的兼容性问题
         make package/feeds/helloworld/gn/host/compile HOSTCC="clang" HOSTCXX="clang++" V=s
     # ================= 插入结束 =================
