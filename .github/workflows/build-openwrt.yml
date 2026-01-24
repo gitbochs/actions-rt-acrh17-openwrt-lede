@@ -134,38 +134,32 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
     # ================= 插入开始 =================
-    - name: Compile gn with Clang and Fix Ninja
+    - name: Compile gn with GCC 11 (Final Fix)
       id: compile_gn
       run: |
         cd openwrt
         
-        # 1. 安装必要的工具
+        # 1. 安装 GCC 11 和 Ninja
         sudo apt-get update
-        sudo apt-get install -y ninja-build clang
+        sudo apt-get install -y ninja-build g++-11
         
-        # 2. 动态查找系统 ninja 的真实路径
-        # Ubuntu 上通常是 /usr/bin/ninja，但也可能是 ninja-build
+        # 2. 修复 Ninja 路径 (动态查找，绝对稳健)
+        # 这一步确保不会报 "ninja: No such file"
+        mkdir -p staging_dir/host/bin
         SYSTEM_NINJA=$(command -v ninja || command -v ninja-build)
-        
         if [ -z "$SYSTEM_NINJA" ]; then
             echo "Error: Ninja binary not found!"
             exit 1
         fi
-        echo "Found system ninja at: $SYSTEM_NINJA"
-        
-        # 3. 创建 OpenWrt 预期的 host 工具目录
-        mkdir -p staging_dir/host/bin
-        
-        # 4. 创建正确的软链接
         ln -sf "$SYSTEM_NINJA" staging_dir/host/bin/ninja
+        echo "Ninja fixed at: $(readlink -f staging_dir/host/bin/ninja)"
         
-        # 5. 验证链接有效性 (这一步不应该再报错了)
-        ls -l staging_dir/host/bin/ninja
-        ./staging_dir/host/bin/ninja --version
-        
-        # 6. 使用 Clang 编译 gn
-        # Clang 兼容性更好，能解决 C++20 ranges 报错
-        make package/feeds/helloworld/gn/host/compile HOSTCC="clang" HOSTCXX="clang++" V=s
+        # 3. 强制使用 GCC 11 编译
+        # 关键点：这里同时设置环境变量和 Make 参数
+        # 这会迫使 OpenWrt 使用 GCC 11 的头文件，绕过 GCC 12 的 ranges 报错
+        export CC=gcc-11
+        export CXX=g++-11
+        make package/feeds/helloworld/gn/host/compile HOSTCC="gcc-11" HOSTCXX="g++-11" V=s
     # ================= 插入结束 =================
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
