@@ -80,11 +80,6 @@ jobs:
       run: |
         git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
 
-    - name: Clone source code
-      working-directory: ./
-      run: |
-        git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
-
     - name: Load custom feeds
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
