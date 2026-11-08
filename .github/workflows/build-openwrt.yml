@@ -45,6 +45,8 @@ jobs:
 
     - name: Cleanup Disk Space
       run: |
+        sudo swapoff -a || true
+        sudo rm -f /swapfile || true
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
         sudo docker image prune -a -f
         sudo apt-get -y purge azure-cli* docker* ghc* zulu* firefox* google* microsoft* dotnet* powershell* openjdk* mysql* sbt* mono-devel*
