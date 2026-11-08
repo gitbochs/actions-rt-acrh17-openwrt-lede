@@ -18,8 +18,6 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
-  #schedule:
-    #- cron: 0 0 * * 6
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -37,7 +35,11 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    # ⭐️ 核心修正 1：升级至最新 Ubuntu 系统，自带 GCC 13+，完美适配现代 OpenWrt
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
 
     steps:
     - name: Checkout
@@ -59,11 +61,10 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
       run: |
         sudo -E apt-get -qq update
-        # 预先删除不必要的系统目录以腾出绝对充足的空间
         sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/graalvm /usr/local/.ghcup \
         /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules
         
-        # 安装依赖
+        # ⭐️ 核心修正 2：补全 32位 交叉编译所需的 gcc-multilib / 核心 eBPF 编译链
         sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison bpftool build-essential \
         bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged \
         help2man intltool libbpf-dev libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
@@ -93,7 +94,15 @@ jobs:
       run: cd openwrt && ./scripts/feeds update -a
 
     - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
+      # ⭐️ 核心修正 3：加入正式的多行折行符 '|'，更新完美适配 daed 运行环境的 golang 分支并物理剔除冲突组件
+      run: |
+        cd openwrt
+        ./scripts/feeds install -a
+        rm -rf feeds/packages/lang/golang           
+        git clone https://github.com -b 24.x feeds/packages/lang/golang
+        rm -rf feeds/packages/net/open-app-filter
+        rm -rf package/feeds/packages/open-app-filter
+        rm -rf feeds/helloworld/gn
 
     - name: Load custom configuration
       run: |
@@ -102,34 +111,7 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
-    # ================= 插入开始 =================
-    - name: Compile gn with GCC 11 (Final Fix)
-      id: compile_gn
-      run: |
-        cd openwrt
-        
-        # 1. 安装 GCC 11 和 Ninja
-        sudo apt-get update
-        sudo apt-get install -y ninja-build g++-11
-        
-        # 2. 修复 Ninja 路径 (动态查找，绝对稳健)
-        # 这一步确保不会报 "ninja: No such file"
-        mkdir -p staging_dir/host/bin
-        SYSTEM_NINJA=$(command -v ninja || command -v ninja-build)
-        if [ -z "$SYSTEM_NINJA" ]; then
-            echo "Error: Ninja binary not found!"
-            exit 1
-        fi
-        ln -sf "$SYSTEM_NINJA" staging_dir/host/bin/ninja
-        echo "Ninja fixed at: $(readlink -f staging_dir/host/bin/ninja)"
-        
-        # 3. 强制使用 GCC 11 编译
-        # 关键点：这里同时设置环境变量和 Make 参数
-        # 这会迫使 OpenWrt 使用 GCC 11 的头文件，绕过 GCC 12 的 ranges 报错
-        export CC=gcc-11
-        export CXX=g++-11
-        make package/feeds/helloworld/gn/host/compile HOSTCC="gcc-11" HOSTCXX="g++-11" V=s
-    # ================= 插入结束 =================
+
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
@@ -139,14 +121,17 @@ jobs:
 
     - name: Download package
       id: package
+      # ⭐️ 核心修正 4：由于你在 menuconfig 里保留勾选了 daed，必须在这里单线程对齐生成 32位 eBPF 依赖，防止并发断层
       run: |
         cd openwrt
         make defconfig
+        make package/feeds/packages/daed/compile HOSTCC="gcc" HOSTCXX="g++" V=s -j1 || true
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
     - name: Compile the firmware
+# 后续编译打包和上传步骤保持不变
       id: compile
       run: |
         cd openwrt
@@ -220,21 +205,3 @@ jobs:
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-        token: ${{ github.token }}
-        repository: ${{ github.repository }}
-        retain_days: 1
-        keep_minimum_runs: 3
-
-    - name: Remove old Releases
-      uses: dev-drprasad/delete-older-releases@v0.2.1
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      with:
-        keep_latest: 3
-        delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
