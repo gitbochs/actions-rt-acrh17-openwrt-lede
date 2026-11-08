@@ -34,9 +34,8 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
-    build:
-    # ⭐️ 核心修正 1：切回 ubuntu-22.04，完美适配 coolsnowwolf/lede 源码的 GCC 版本要求
-    runs-on: ubuntu-22.04
+  build:
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: write
@@ -133,13 +132,9 @@ jobs:
         cd openwrt
         echo -e "$(nproc) thread compile"
         
-        # ⭐️ 核心修正 2：严谨判断编译结果，若多线程与单线程均失败，则直接中断并抛出真实错误
         if ! make -j$(nproc); then
             echo "Multi-thread build failed. Retrying with single thread for structural debug..."
-            if ! make -j1 V=s; then
-                echo "❌ Error: Compilation failed completely."
-                exit 1
-            fi
+            make -j1 V=s
         fi
         
         echo "status=success" >> $GITHUB_OUTPUT
@@ -162,6 +157,7 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
+        # 匹配固件生成的实际路径
         TARGET_PATH=$(ls -d openwrt/bin/targets/*/* 2>/dev/null | head -n 1)
         if [ -z "$TARGET_PATH" ] || [ ! -d "$TARGET_PATH" ]; then
           echo "❌ Error: OpenWrt compilation failed. No target firmware directory found in bin/targets/"
