@@ -35,7 +35,6 @@ env:
 
 jobs:
   build:
-    # ⭐️ 核心修正 1：升级至最新 Ubuntu 系统，自带 GCC 13+，完美适配现代 OpenWrt
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -64,7 +63,6 @@ jobs:
         sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/graalvm /usr/local/.ghcup \
         /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules
         
-        # ⭐️ 核心修正 2：补全 32位 交叉编译所需的 gcc-multilib / 核心 eBPF 编译链
         sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison bpftool build-essential \
         bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged \
         help2man intltool libbpf-dev libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
@@ -94,12 +92,11 @@ jobs:
       run: cd openwrt && ./scripts/feeds update -a
 
     - name: Install feeds
-      # ⭐️ 核心修正 3：加入正式的多行折行符 '|'，更新完美适配 daed 运行环境的 golang 分支并物理剔除冲突组件
       run: |
         cd openwrt
         ./scripts/feeds install -a
         rm -rf feeds/packages/lang/golang           
-        git clone https://github.com -b 24.x feeds/packages/lang/golang
+        git clone https://github.com/sbwml/packages_lang_golang -b 24.x feeds/packages/lang/golang
         rm -rf feeds/packages/net/open-app-filter
         rm -rf package/feeds/packages/open-app-filter
         rm -rf feeds/helloworld/gn
@@ -114,14 +111,13 @@ jobs:
 
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
-      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
+      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
       env:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
     - name: Download package
       id: package
-      # ⭐️ 核心修正 4：由于你在 menuconfig 里保留勾选了 daed，必须在这里单线程对齐生成 32位 eBPF 依赖，防止并发断层
       run: |
         cd openwrt
         make defconfig
@@ -136,7 +132,6 @@ jobs:
         cd openwrt
         echo -e "$(nproc) thread compile"
         
-        # Run compilation. If it fails, fall back cleanly to a single-thread verbose debug mode
         if ! make -j$(nproc); then
             echo "Multi-thread build failed. Retrying with single thread for structural debug..."
             make -j1 V=s
@@ -162,10 +157,16 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        cd openwrt/bin/targets/*/*
+        # 匹配固件生成的实际路径
+        TARGET_PATH=$(ls -d openwrt/bin/targets/*/* 2>/dev/null | head -n 1)
+        if [ -z "$TARGET_PATH" ] || [ ! -d "$TARGET_PATH" ]; then
+          echo "❌ Error: OpenWrt compilation failed. No target firmware directory found in bin/targets/"
+          exit 1
+        fi
+        cd "$TARGET_PATH"
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >>$GITHUB_OUTPUT
+        echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
       uses: actions/upload-artifact@main
