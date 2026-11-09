@@ -85,7 +85,34 @@ jobs:
         chmod +x $DIY_P1_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
-
+    # ================= 插入开始 =================
+    - name: Compile gn with GCC 11 (Final Fix)
+      id: compile_gn
+      run: |
+        cd openwrt
+        
+        # 1. 安装 GCC 11 和 Ninja
+        sudo apt-get update
+        sudo apt-get install -y ninja-build g++-11
+        
+        # 2. 修复 Ninja 路径 (动态查找，绝对稳健)
+        # 这一步确保不会报 "ninja: No such file"
+        mkdir -p staging_dir/host/bin
+        SYSTEM_NINJA=$(command -v ninja || command -v ninja-build)
+        if [ -z "$SYSTEM_NINJA" ]; then
+            echo "Error: Ninja binary not found!"
+            exit 1
+        fi
+        ln -sf "$SYSTEM_NINJA" staging_dir/host/bin/ninja
+        echo "Ninja fixed at: $(readlink -f staging_dir/host/bin/ninja)"
+        
+        # 3. 强制使用 GCC 11 编译
+        # 关键点：这里同时设置环境变量和 Make 参数
+        # 这会迫使 OpenWrt 使用 GCC 11 的头文件，绕过 GCC 12 的 ranges 报错
+        export CC=gcc-11
+        export CXX=g++-11
+        make package/feeds/helloworld/gn/host/compile HOSTCC="gcc-11" HOSTCXX="g++-11" V=s
+    # ================= 插入结束 =================
     - name: Update feeds
       run: cd openwrt && ./scripts/feeds update -a
 
